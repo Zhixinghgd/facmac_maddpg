@@ -72,6 +72,7 @@ class MADDPG:
         for agent_id, (obs_dim, act_dim) in dim_info.items():
             if agent_id.startswith("adversary_") or agent_id.startswith("leadadversary_"):
                 global_state_dim += obs_dim
+        print(global_state_dim)
         # create Agent(actor-critic) and replay buffer for each agent
         self.agents = {}
         self.buffers = {}
@@ -173,6 +174,7 @@ class MADDPG:
 
         def get_global(obs_dict):
             adversary_obs = [obs for id, obs in obs_dict.items() if id.startswith("adversary_")]
+            # print(adversary_obs[0].shape)    #:[1024,44],1024是抽样大小，44是单个追逐者抽样维度
             return torch.cat(adversary_obs, dim=1)
 
         global_state = get_global(obs)
@@ -297,6 +299,13 @@ class MADDPG:
         self.update_mixing(qmix_loss)  # 更新混合网络和局部Q 函数还没写，不知该放在MADDPG还是Facmac_agent
 
         # Actor更新（融合双Q）
+
+        total_qs = torch.stack([
+            agent.agent_q_value(obs[id], agent.action(obs[id]))
+            for id, agent in self.agents.items() if (id.startswith("adversary") or id.startswith("leadadversary_"))],
+            dim=1)
+        q_tot = self.Mixing_net(total_qs, global_state).detach()
+
         for agent_id, agent in self.agents.items():
             # 生成新动作
             new_action, logits = agent.action(obs[agent_id], model_out=True)
@@ -308,7 +317,7 @@ class MADDPG:
             # 计算QMIX局部Q值
             if agent_id.startswith("adversary") or agent_id.startswith("leadadversary_"):
                 q_local = agent.agent_q_value(obs[agent_id], new_action)
-                combined_q = q_local
+                combined_q = q_tot
             else:
                 combined_q = q_global
 

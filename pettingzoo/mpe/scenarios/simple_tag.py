@@ -5,7 +5,7 @@ from .._mpe_utils.scenario import BaseScenario
 
 
 class Scenario(BaseScenario):
-    def make_world(self, num_good=1, num_adversaries=3, num_obstacles=2):
+    def make_world(self, num_good=1, num_adversaries=3, num_obstacles=4):
         world = World()
         # set any world properties first
         world.dim_c = 2
@@ -33,6 +33,11 @@ class Scenario(BaseScenario):
             landmark.movable = False
             landmark.size = 0.2
             landmark.boundary = False
+            landmark.shape = 'rect'
+            landmark.rect_size = [0.6, 0.1]  # 长条形
+            landmark.size = 0.0  # 禁用圆形碰撞
+            landmark.rotation = np.deg2rad(0)
+
         return world
 
     def reset_world(self, world, np_random):
@@ -51,10 +56,30 @@ class Scenario(BaseScenario):
             agent.state.p_pos = np_random.uniform(-1, +1, world.dim_p)
             agent.state.p_vel = np.zeros(world.dim_p)
             agent.state.c = np.zeros(world.dim_c)
-        for i, landmark in enumerate(world.landmarks):
-            if not landmark.boundary:
-                landmark.state.p_pos = np_random.uniform(-0.9, +0.9, world.dim_p)
-                landmark.state.p_vel = np.zeros(world.dim_p)
+        # for i, landmark in enumerate(world.landmarks):
+        #     if not landmark.boundary:
+        #         landmark.state.p_pos = np_random.uniform(-0.9, +0.9, world.dim_p)
+        #         landmark.state.p_vel = np.zeros(world.dim_p)
+
+        # configs = [
+        #     {'pos': [0, 0.5], 'rot': 0},  # 水平上梁
+        #     {'pos': [-0.3, 0], 'rot': 90},  # 左柱
+        #     {'pos': [0.3, 0], 'rot': 90},  # 右柱
+        #     {'pos': [0, -0.5], 'rot': 45}  # 底部斜梁
+        # ]
+        configs = [
+            {'pos': [0.6, 0.3], 'rot': 90},  #
+            {'pos': [-0.3, 0.6], 'rot': 0},  #
+            {'pos': [-0.6, -0.3], 'rot': 90},  #
+            {'pos': [0.3, -0.6], 'rot': 0}  #
+        ]
+        for i, wall in enumerate(world.landmarks):
+            if i < len(configs):
+                cfg = configs[i]
+                wall.state.p_pos = np.array(cfg['pos'])
+                wall.rotation = np.deg2rad(cfg['rot'])
+            else:
+                wall.state.p_pos = np.array([999, 999])  # 隐藏多余组件
 
     def benchmark_data(self, agent, world):
         # returns data for benchmarking purposes
@@ -82,47 +107,64 @@ class Scenario(BaseScenario):
         return [agent for agent in world.agents if agent.adversary]
 
     def calculate_total_reward(self, world):
-        collision_reward = 0
-        proximity_reward = 0
-        cooperation_reward = 0
-        time_penalty = -0.1
-        agents = self.good_agents(world)
-        adversaries = self.adversaries(world)
+        # 1) 碰撞奖励
+        collision = 0.0
+        rew = 0
+        for ag in self.good_agents(world):
+            for adv in self.adversaries(world):
+                if self.is_collision(ag, adv):
+                    collision += 10.0
 
-        # 碰撞奖励（稀疏奖励）
-        for adv in adversaries:
-            if adv.collide:
-                for ag in agents:
-                    if self.is_collision(ag, adv):
-                        collision_reward += 5  # 调整为2
+        # 2) shaping：所有追逐者到最近逃跑者的最小距离
+        for adv in self.adversaries(world):
+            rew -= 0.1 * min([np.sqrt(np.sum(np.square(a.state.p_pos - adv.state.p_pos))) for a in self.good_agents(world)])
 
-        # 密集奖励：追逐者与所有逃跑者的距离
-        # 改进的 proximity_reward：按最近目标 + 分层惩罚
-        for adv in adversaries:
-            # 计算到所有逃跑者的距离，取最小值
-            distances = [
-                np.sqrt(np.sum(np.square(ag.state.p_pos - adv.state.p_pos)))
-                for ag in agents
-            ]
-            min_distance = min(distances) if distances else 0
+        return collision + rew
 
-            # 分层奖励设计
-            if min_distance < 3.0:  # 近距离高权重
-                proximity_reward -= 0.03 * min_distance
-            elif min_distance < 10.0:  # 中距离中等权重
-                proximity_reward -= 0.01 * min_distance
-            else:  # 远距离低权重
-                proximity_reward -= 0.005 * min_distance
+    # 4/17facmac暂时注释掉，使用facmac开源的总奖励计算方式
+    # def calculate_total_reward(self, world):
+    #     collision_reward = 0
+    #     proximity_reward = 0
+    #     cooperation_reward = 0
+    #     time_penalty = -0.1
+    #     agents = self.good_agents(world)
+    #     adversaries = self.adversaries(world)
+    #
+    #     # 碰撞奖励（稀疏奖励）
+    #     for adv in adversaries:
+    #         if adv.collide:
+    #             for ag in agents:
+    #                 if self.is_collision(ag, adv):
+    #                     collision_reward += 5  # 调整为2
+    #
+    #     # 密集奖励：追逐者与所有逃跑者的距离
+    #     # 改进的 proximity_reward：按最近目标 + 分层惩罚
+    #     for adv in adversaries:
+    #         # 计算到所有逃跑者的距离，取最小值
+    #         distances = [
+    #             np.sqrt(np.sum(np.square(ag.state.p_pos - adv.state.p_pos)))
+    #             for ag in agents
+    #         ]
+    #         min_distance = min(distances) if distances else 0
+    #
+    #         # 分层奖励设计
+    #         if min_distance < 3.0:  # 近距离高权重
+    #             proximity_reward -= 0.03 * min_distance
+    #         elif min_distance < 10.0:  # 中距离中等权重
+    #             proximity_reward -= 0.01 * min_distance
+    #         else:  # 远距离低权重
+    #             proximity_reward -= 0.005 * min_distance
+    #
+    #     # 协作奖励：多个追逐者包围同一目标
+    #     for ag in agents:
+    #         distances = [np.sqrt(np.sum(np.square(ag.state.p_pos - adv.state.p_pos))) for adv in adversaries]
+    #         num_close_adv = sum(d < 1.0 for d in distances)
+    #         if num_close_adv >= 2:
+    #             cooperation_reward += 1 * num_close_adv
+    #
+    #     total_reward = collision_reward + proximity_reward + cooperation_reward + time_penalty
+    #     return total_reward
 
-        # 协作奖励：多个追逐者包围同一目标
-        for ag in agents:
-            distances = [np.sqrt(np.sum(np.square(ag.state.p_pos - adv.state.p_pos))) for adv in adversaries]
-            num_close_adv = sum(d < 1.0 for d in distances)
-            if num_close_adv >= 2:
-                cooperation_reward += 1 * num_close_adv
-
-        total_reward = collision_reward + proximity_reward + cooperation_reward + time_penalty
-        return total_reward
     # def calculate_total_reward(self, world):
     #     # 计算所有追逐者的碰撞奖励之和
     #     collision_reward = 0
@@ -154,7 +196,13 @@ class Scenario(BaseScenario):
             if agent.adversary
             else self.agent_reward(agent, world)
         )
-        return main_reward
+        for a, landmark_a in enumerate(world.landmarks):
+            is_collide = world.rotated_rect_circle(agent, landmark_a)
+            if is_collide == True:
+                # print("发生碰撞", agent.name, landmark_a.name)
+                break
+
+        return main_reward - 0.5 * is_collide
 
     def agent_reward(self, agent, world):
         # Agents are negatively rewarded if caught by adversaries
@@ -236,7 +284,16 @@ class Scenario(BaseScenario):
         entity_pos = []
         for entity in world.landmarks:
             if not entity.boundary:
-                entity_pos.append(entity.state.p_pos - agent.state.p_pos)
+                # entity_pos.append(entity.state.p_pos - agent.state.p_pos)
+                # 相对位置 + 尺寸 + 旋转角度
+                rel_pos = entity.state.p_pos - agent.state.p_pos
+                entity_pos.append([
+                    rel_pos[0], rel_pos[1],
+                    entity.rect_size[0], entity.rect_size[1],
+                    # entity.rotation  #旋转角度突变可能影响学习
+                    np.sin(entity.rotation),  # 旋转的正弦值（规范化）
+                    np.cos(entity.rotation)  # 旋转的余弦值（规范化）
+                ])
         # communication of all other agents
         comm = []
         other_pos = []
@@ -251,7 +308,7 @@ class Scenario(BaseScenario):
         return np.concatenate(
             [agent.state.p_vel]
             + [agent.state.p_pos]
-            + entity_pos
-            + other_pos
-            + other_vel
+            + entity_pos  # 障碍物信息
+            + other_pos  # 所有智能体相对位置
+            + other_vel  # 逃跑者速度
         )

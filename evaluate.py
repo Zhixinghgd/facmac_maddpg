@@ -20,10 +20,18 @@ if __name__ == '__main__':
 
     model_dir = os.path.join('./results', args.env_name, args.folder)
     assert os.path.exists(model_dir)
+    # gif_dir = os.path.join(model_dir, 'gif')
+    # 强制清空旧结果
     gif_dir = os.path.join(model_dir, 'gif')
+    if os.path.exists(gif_dir):
+        import shutil
+
+        shutil.rmtree(gif_dir)
+    os.makedirs(gif_dir)
     if not os.path.exists(gif_dir):
         os.makedirs(gif_dir)
-    gif_num = len([file for file in os.listdir(gif_dir)])  # current number of gif
+    # gif_num = len([file for file in os.listdir(gif_dir)])  # current number of gif
+    gif_num = len([f for f in os.listdir(gif_dir) if f.startswith('out') and f.endswith('.gif')])
 
     env, dim_info, num_good, num_adversaries = get_env(args.env_name, args.episode_length)
     maddpg = MADDPG.load(dim_info, os.path.join(model_dir, 'model.pt'), num_good, num_adversaries)
@@ -32,6 +40,7 @@ if __name__ == '__main__':
     # reward of each episode of each agent
     episode_rewards = {agent: np.zeros(args.episode_num) for agent in env.agents}
     for episode in range(args.episode_num):
+        print(f"Starting episode {episode + 1}/{args.episode_num}")  # 调试输出
         states = env.reset()
         agent_reward = {agent: 0 for agent in env.agents}  # agent reward of the current episode
         frame_list = []  # used to save gif
@@ -40,6 +49,14 @@ if __name__ == '__main__':
             next_states, rewards, total_reward, dones, infos = env.step(actions)
             frame_list.append(Image.fromarray(env.render(mode='rgb_array')))
             states = next_states
+            try:
+                frame = env.render(mode='rgb_array')
+                if frame is not None:  # 确保渲染有效
+                    frame_list.append(Image.fromarray(frame))
+            except Exception as e:
+                print(f"渲染失败: {str(e)}")
+                frame = np.zeros((100, 100, 3), dtype=np.uint8)  # 生成空白帧
+                frame_list.append(Image.fromarray(frame))
 
             for agent_id, reward in rewards.items():  # update reward
                 agent_reward[agent_id] += reward
@@ -52,9 +69,13 @@ if __name__ == '__main__':
             message += f'{agent_id}: {reward:>4f}; '
         print(message)
         # save gif
-        frame_list[0].save(os.path.join(gif_dir, f'out{gif_num + episode + 1}.gif'),
-                           save_all=True, append_images=frame_list[1:], duration=1, loop=0)
-
+        # frame_list[0].save(os.path.join(gif_dir, f'out{gif_num + episode + 1}.gif'),
+        #                    save_all=True, append_images=frame_list[1:], duration=1, loop=0)
+        # 修改后（直接按episode序号命名）
+        if len(frame_list) > 0:
+            gif_path = os.path.join(gif_dir, f'episode_{episode + 1}.gif')
+            frame_list[0].save(gif_path, save_all=True, append_images=frame_list[1:], duration=1, loop=0)
+            print(f"成功保存: {gif_path}")
     # training finishes, plot reward
     fig, ax = plt.subplots()
     x = range(1, args.episode_num + 1)

@@ -10,13 +10,14 @@ from torch.optim import Adam
 class Agent:
     """Agent that can interact with environment from pettingzoo"""
 
-    def __init__(self, agent_id, obs_dim, act_dim, global_obs_dim, actor_lr, critic_lr):
+    def __init__(self, agent_id, obs_dim, act_dim, global_obs_act_dim, actor_lr, critic_lr):
         self.actor = MLPNetwork(obs_dim, act_dim)
+        # self.actor = MLPNetwork(obs_dim + act_dim, act_dim)
         # 后续actor考虑加入上一步动作MLPNetwork(obs_dim + act_dim（此处为上个动作，维度相同）, act_dim)
 
         # critic input all the observations and actions
         # if there are 3 agents for example, the input for critic is (obs1, obs2, obs3, act1, act2, act3)
-        self.critic = MLPNetwork(global_obs_dim, 1)
+        self.critic = MLPNetwork(global_obs_act_dim, 1)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = Adam(self.critic.parameters(), lr=critic_lr)
         self.target_actor = deepcopy(self.actor)
@@ -102,12 +103,12 @@ class Agent:
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
         self.critic_optimizer.step()
-
-    def update_agent_q(self, loss):
-        self.q_agent_optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
-        self.q_agent_optimizer.step()
+    #
+    # def update_agent_q(self, loss):
+    #     self.q_agent_optimizer.zero_grad()
+    #     loss.backward()
+    #     torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
+    #     self.q_agent_optimizer.step()
 
 class MLPNetwork(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim=64, non_linear=nn.ReLU()):

@@ -25,7 +25,7 @@ def get_env(env_name, ep_len=25):
     if env_name == 'simple_spread_v2':
         new_env = simple_spread_v2.parallel_env(max_cycles=ep_len)
     if env_name == 'simple_tag_v2':
-        new_env = simple_tag_v2.parallel_env(num_good=num_good, num_adversaries=num_adversaries, num_obstacles=2, max_cycles=ep_len, continuous_actions=True)
+        new_env = simple_tag_v2.parallel_env(num_good=num_good, num_adversaries=num_adversaries, num_obstacles=4, max_cycles=ep_len, continuous_actions=True)
         # new_env = simple_tag_v2.parallel_env(max_cycles=ep_len)
     if env_name == 'simple_world_comm_v2':
         new_env = simple_world_comm_v2.env(num_good=num_good, num_adversaries=num_adversaries, num_obstacles=1,
@@ -65,9 +65,9 @@ def get_env(env_name, ep_len=25):
     return new_env, _dim_info, num_good, num_adversaries
 
 
-env, dim_info, num_good, num_adversaries= get_env('simple_world_comm_v2', 25)
+env, dim_info, num_good, num_adversaries= get_env('simple_tag_v2', 25)
 print(dim_info)
-print("leadadversary_0 action space:", env.action_space("leadadversary_0"))
+print("adversary_0 action space:", env.action_space("adversary_0"))
 env.reset()
 action = {agent: np.zeros(space.shape, dtype=np.float32) for agent, space in env.action_spaces.items()}
 obs, rew, tot_rew, done, info = env.step(action)  # 应无报错

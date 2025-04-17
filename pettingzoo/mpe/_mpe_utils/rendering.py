@@ -21,7 +21,7 @@ from pyglet.gl import (
     GL_POLYGON,
     GL_QUADS,
     GL_SRC_ALPHA,
-    GL_TRIANGLES,
+    GL_TRIANGLES, glFlush, glMatrixMode, GL_MODELVIEW,
 )
 
 try:
@@ -85,12 +85,37 @@ def get_display(spec):
 
 class Viewer:
     def __init__(self, width, height, display=None):
+        try:
+            # 尝试硬件加速
+            config = pyglet.gl.Config(double_buffer=True)
+            self.window = pyglet.window.Window(config=config, visible=False)
+        except pyglet.window.NoSuchConfigException:
+            # 回退到软件渲染
+            config = pyglet.gl.Config(double_buffer=True, driver='software')
+            self.window = pyglet.window.Window(config=config, visible=False)
         display = get_display(display)
 
         self.width = width
         self.height = height
 
-        self.window = pyglet.window.Window(width=width, height=height, display=display)
+        # self.window = pyglet.window.Window(width=width, height=height, display=display)
+        # 添加OpenGL配置
+        config = pyglet.gl.Config(
+            double_buffer=True,
+            depth_size=24,
+            major_version=2,  # 使用兼容的OpenGL 2.1
+            minor_version=1
+        )
+        self.window = pyglet.window.Window(
+            width=width,
+            height=height,
+            display=display,
+            config=config,  # 添加双缓冲配置
+            visible=True  # 强制窗口可见
+        )
+        self.window.set_visible(True)  # 强制窗口可见
+        self.window.switch_to()  # 立即激活上下文
+        self.window.dispatch_events()  # 立即处理事件创建上下文
         self.window.on_close = self.window_closed_by_user
         self.geoms = []
         self.onetime_geoms = []
@@ -245,17 +270,24 @@ class Transform(Attr):
         self.set_rotation(rotation)
         self.set_scale(*scale)
 
-    def enable(self):
-        glPushMatrix()
-        glTranslatef(
-            self.translation[0], self.translation[1], 0
-        )  # translate to GL loc ppint
-        glRotatef(RAD2DEG * self.rotation, 0, 0, 1.0)
-        glScalef(self.scale[0], self.scale[1], 1)
+    # def enable(self):
+    #     glPushMatrix()
+    #     glTranslatef(
+    #         self.translation[0], self.translation[1], 0
+    #     )  # translate to GL loc ppint
+    #     glRotatef(RAD2DEG * self.rotation, 0, 0, 1.0)
+    #     glScalef(self.scale[0], self.scale[1], 1)
 
+    def enable(self):
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glTranslatef(*self.translation, 0)
+        glRotatef(RAD2DEG * self.rotation, 0, 0, 1.0)
+        glScalef(*self.scale, 1)
     def disable(self):
         glPopMatrix()
-
+        # 添加显式刷新指令
+        glFlush()
     def set_translation(self, newx, newy):
         self.translation = (float(newx), float(newy))
 
@@ -344,6 +376,7 @@ class FilledPolygon(Geom):
         self.v = v
 
     def render1(self):
+        glPushMatrix()  # 添加矩阵保护
         if len(self.v) == 4:
             glBegin(GL_QUADS)
         elif len(self.v) > 4:
@@ -353,6 +386,7 @@ class FilledPolygon(Geom):
         for p in self.v:
             glVertex3f(p[0], p[1], 0)  # draw each vertex
         glEnd()
+        glPopMatrix()  # 恢复矩阵状态
 
         color = (
             self._color.vec4[0] * 0.5,
@@ -495,3 +529,13 @@ class SimpleImageViewer:
 
     def __del__(self):
         self.close()
+
+
+# rendering.py 新增函数
+def make_rectangle(width, height, filled=True):
+    from gym.envs.classic_control import rendering
+    l, r, t, b = -width/2, width/2, -height/2, height/2
+    rect = rendering.FilledPolygon([(l,b), (l,t), (r,t), (r,b)]) if filled else \
+           rendering.PolyLine([(l,b), (l,t), (r,t), (r,b)], True)
+    rect.add_attr(rendering.Transform())
+    return rect

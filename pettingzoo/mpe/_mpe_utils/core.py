@@ -47,7 +47,9 @@ class Entity:  # properties and state of physical world entity
         self.state = EntityState()
         # mass
         self.initial_mass = 1.0
-
+        self.shape = 'circle'  # 默认圆形
+        self.rect_size = [0.4, 0.1]  # 矩形尺寸
+        self.rotation = 0.0  # 新增旋转角度（弧度）
     @property
     def mass(self):
         return self.initial_mass
@@ -56,7 +58,12 @@ class Entity:  # properties and state of physical world entity
 class Landmark(Entity):  # properties of landmark entities
     def __init__(self):
         super().__init__()
-
+        self.shape = 'rect'  # 新增形状属性
+        self.collide = True
+        self.movable = False
+        self.boundary = False
+        self.rect_size = [0.5, 0.1]  # 长方形尺寸 [width, height]
+        self.rotation = 0.0  # 旋转角度（弧度）
 
 class Agent(Entity):  # properties of agent entities
     def __init__(self):
@@ -79,7 +86,7 @@ class Agent(Entity):  # properties of agent entities
         self.action = Action()
         # script behavior to execute
         self.action_callback = None
-
+        self.shape = 'circle'  # 新增形状属性
 
 class World:  # multi-agent world
     def __init__(self):
@@ -204,6 +211,21 @@ class World:  # multi-agent world
             return [None, None]  # not a collider
         if entity_a is entity_b:
             return [None, None]  # don't collide against itself
+
+            # 处理矩形障碍物与圆形实体的碰撞
+
+
+
+        if entity_a.shape == 'circle' and entity_b.shape == 'rect':
+            if self.rotated_rect_circle(entity_a, entity_b):
+                # print(f"碰撞发生: {entity_b.name} (位置:{entity_b.state.p_pos}, 旋转:{entity_b.rotation}) 和 {entity_a.name}")
+                # 计算反弹方向
+                delta = entity_a.state.p_pos - entity_b.state.p_pos
+                dist = np.linalg.norm(delta)
+                force = self.contact_force * delta / dist
+                return [force, None]
+
+        # 原有圆形碰撞处理
         # compute actual distance between entities
         delta_pos = entity_a.state.p_pos - entity_b.state.p_pos
         dist = np.sqrt(np.sum(np.square(delta_pos)))
@@ -216,3 +238,20 @@ class World:  # multi-agent world
         force_a = +force if entity_a.movable else None
         force_b = -force if entity_b.movable else None
         return [force_a, force_b]
+
+    def rotated_rect_circle(self, circle, rect):
+        # 将角度转换为弧度（确保rect.rotation本身是弧度）
+        angle = rect.rotation  # 移除负号
+        # 坐标变换到矩形本地坐标系
+        cx = circle.state.p_pos[0] - rect.state.p_pos[0]
+        cy = circle.state.p_pos[1] - rect.state.p_pos[1]
+        dx = cx * np.cos(angle) - cy * np.sin(angle)
+        dy = cx * np.sin(angle) + cy * np.cos(angle)
+
+        # 本地坐标系的轴对齐检测
+        closest_x = np.clip(dx, -rect.rect_size[0] / 2, rect.rect_size[0] / 2)
+        closest_y = np.clip(dy, -rect.rect_size[1] / 2, rect.rect_size[1] / 2)
+
+        # 转换回全局坐标系
+        distance = np.sqrt((dx - closest_x) ** 2 + (dy - closest_y) ** 2)
+        return distance < circle.size

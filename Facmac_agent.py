@@ -36,7 +36,7 @@ class QMixNet(nn.Module):
     def forward(self, q_values, states):
         episode_num = q_values.size(0)
         q_values = q_values.view(-1, 1, self.n_agents)  # 重塑为3D张量 (batch_size, 1, n_agents)
-        states = states.reshape(-1, self.state_shape)
+        states = states.reshape(-1, self.state_shape)  # 重塑为2D张量 (batch_size, state_shape)
 
         w1 = torch.abs(self.hyper_w1(states))  # (batch_size, n_agents * qmix_hidden_dim)
         b1 = self.hyper_b1(states)  # (batch_size, qmix_hidden_dim)

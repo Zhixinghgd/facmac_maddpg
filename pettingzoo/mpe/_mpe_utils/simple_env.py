@@ -1,4 +1,5 @@
 import numpy as np
+import pyglet
 from gym import spaces
 from gym.utils import seeding
 
@@ -245,15 +246,35 @@ class SimpleEnv(AECEnv):
             self.render_geoms = []
             self.render_geoms_xform = []
             for entity in self.world.entities:
-                geom = rendering.make_circle(entity.size)
-                xform = rendering.Transform()
+                # 根据实体类型创建不同几何体
+                if hasattr(entity, 'shape') and entity.shape == 'rect':
+                    # 创建可旋转矩形（尺寸需要缩放）
+                    geom = rendering.make_rectangle(
+                        width=entity.rect_size[0],  # 宽度缩放因子
+                        height=entity.rect_size[1],  # 高度缩放因子
+                        filled=True
+                    )
+                    # 创建包含旋转的变换链
+                    rot_transform = rendering.Transform(rotation=entity.rotation)
+                    trans_transform = rendering.Transform()
+                    geom.add_attr(rot_transform)  # 先旋转
+                    geom.add_attr(trans_transform)  # 后平移
+                    self.render_geoms_xform.append((trans_transform, rot_transform))
+                else:
+                    # 默认圆形处理
+                    geom = rendering.make_circle(entity.size)
+                    xform = rendering.Transform()
+                    geom.add_attr(xform)
+                    self.render_geoms_xform.append((xform, None))  # 保持结构统一
+                # geom = rendering.make_circle(entity.size)
+                # xform = rendering.Transform()
                 if "agent" in entity.name:
                     geom.set_color(*entity.color[:3], alpha=0.5)
                 else:
                     geom.set_color(*entity.color[:3])
-                geom.add_attr(xform)
+                # geom.add_attr(xform)
                 self.render_geoms.append(geom)
-                self.render_geoms_xform.append(xform)
+                # self.render_geoms_xform.append(xform)
 
             # add geoms to viewer
             self.viewer.geoms = []
@@ -289,9 +310,27 @@ class SimpleEnv(AECEnv):
         self.viewer.set_max_size(cam_range)
         # update geometry positions
         for e, entity in enumerate(self.world.entities):
-            self.render_geoms_xform[e].set_translation(*entity.state.p_pos)
+            if hasattr(entity, 'shape') and entity.shape == 'rect':
+                # 对矩形需要同时设置位置和旋转
+                trans_tf, rot_tf = self.render_geoms_xform[e]
+                trans_tf.set_translation(*entity.state.p_pos)
+                if rot_tf is not None:
+                    rot_tf.set_rotation(entity.rotation)  # 更新旋转角度
+            else:
+                # 其他实体只更新位置
+                self.render_geoms_xform[e][0].set_translation(*entity.state.p_pos)
+            # self.render_geoms_xform[e].set_translation(*entity.state.p_pos)
         # render to display or array
-        return self.viewer.render(return_rgb_array=mode == "rgb_array")
+        try:
+            arr = self.viewer.render(return_rgb_array=(mode == 'rgb_array'))
+            # 添加显式同步
+            if mode == 'human':
+                pyglet.clock.tick()  # 推进事件循环
+            return arr
+        except Exception as e:
+            print(f"渲染失败: {str(e)}")
+            return np.zeros((100, 100, 3), dtype=np.uint8)  # 返回空白图像避免崩溃
+        # return self.viewer.render(return_rgb_array=mode == "rgb_array")
 
     # reset rendering assets
     def _reset_render(self):
