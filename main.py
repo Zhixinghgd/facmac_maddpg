@@ -69,7 +69,7 @@ if __name__ == '__main__':
     parser.add_argument('--episode_length', type=int, default=25, help='steps per episode')
     parser.add_argument('--learn_interval', type=int, default=100,
                         help='steps interval between learning time')
-    parser.add_argument('--random_steps', type=int, default=1e4,
+    parser.add_argument('--random_steps', type=int, default=5e4,
                         help='random steps before the agent start to learn')
     parser.add_argument('--tau', type=float, default=0.02, help='soft update parameter')
     parser.add_argument('--gamma', type=float, default=0.95, help='discount factor')
@@ -121,8 +121,8 @@ if __name__ == '__main__':
                 agent_reward[agent_id] += r
 
             if step >= args.random_steps and step % args.learn_interval == 0:  # learn every few steps同一训练步进行的，可以考虑分开
-                maddpg.learn(args.batch_size, args.gamma)#更新评估网络Q和策略网络A
-                # maddpg.qmix_learn(args.batch_size, args.gamma)
+                # maddpg.learn(args.batch_size, args.gamma)#更新评估网络Q和策略网络A
+                maddpg.qmix_learn(args.batch_size, args.gamma)
                 # maddpg.maddpg_learn(args.batch_size, args.gamma)
                 maddpg.update_target(args.tau)#目标网络更新：使用软更新参数 args.tau 更新目标网络的权重。
 

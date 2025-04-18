@@ -269,8 +269,8 @@ class MADDPG:
         next_global_state = get_global(next_obs)
         # MADDPG部分更新(仅agent)
         for agent_id, agent in self.agents.items():
-            if agent_id.startswith("agent_") :
-            # 更新critic（保持原MADDPG逻辑）
+            if agent_id.startswith("agent_"):
+                # 更新critic（保持原MADDPG逻辑）
                 critic_value = agent.critic_value(list(obs.values()), list(act.values()))
                 next_target = agent.target_critic_value(list(next_obs.values()), list(next_act.values()))
                 target_value = reward[agent_id] + gamma * next_target * (1 - done[agent_id])
@@ -280,12 +280,13 @@ class MADDPG:
         # QMIX部分更新 需要限定只更新adversaries
         current_qs = torch.stack([
             agent.agent_q_value(obs[id], act[id])
-            for id, agent in self.agents.items()if (id.startswith("adversary") or id.startswith("leadadversary_"))], dim=1)  # (batch_size, n_adversaries)
+            for id, agent in self.agents.items() if (id.startswith("adversary") or id.startswith("leadadversary_"))],
+            dim=1)  # (batch_size, n_adversaries)
 
         target_qs = torch.stack([
             agent.target_agent_q_value(next_obs[id], next_act[id])
-            for id, agent in self.agents.items()if (id.startswith("adversary") or id.startswith("leadadversary_"))], dim=1)
-
+            for id, agent in self.agents.items() if (id.startswith("adversary") or id.startswith("leadadversary_"))],
+            dim=1)
 
         q_tot = self.Mixing_net(current_qs, global_state)  # 混合网络输出
         target_q_tot = self.Mixing_target_net(target_qs, next_global_state)
@@ -293,18 +294,13 @@ class MADDPG:
         # 假设使用全局奖励（需与环境设置一致）
         # qmix_target = total_reward + gamma * target_q_tot * (1 - total_reward)
         # 上面需要(1 - done[agent_id])是防止已经结束的智能体的奖励干扰，全局只有一个应该不干扰吧？
-        global_done = torch.stack(list(done.values())).any(dim=0).float()  #任一agent终止即视为全局终止
+        global_done = torch.stack(list(done.values())).any(dim=0).float()  # 任一agent终止即视为全局终止
         qmix_target = total_reward + gamma * target_q_tot * (1 - global_done)
         qmix_loss = F.mse_loss(q_tot, qmix_target.detach())
         self.update_mixing(qmix_loss)  # 更新混合网络和局部Q 函数还没写，不知该放在MADDPG还是Facmac_agent
 
         # Actor更新（融合双Q）
-
-        total_qs = torch.stack([
-            agent.agent_q_value(obs[id], agent.action(obs[id]))
-            for id, agent in self.agents.items() if (id.startswith("adversary") or id.startswith("leadadversary_"))],
-            dim=1)
-        q_tot = self.Mixing_net(total_qs, global_state).detach()
+        adv_agent = {id: agent for id, agent in self.agents.items() if (id.startswith("adversary") or id.startswith("leadadversary_"))}
 
         for agent_id, agent in self.agents.items():
             # 生成新动作
@@ -316,14 +312,18 @@ class MADDPG:
 
             # 计算QMIX局部Q值
             if agent_id.startswith("adversary") or agent_id.startswith("leadadversary_"):
-                q_local = agent.agent_q_value(obs[agent_id], new_action)
+                # q_local = agent.agent_q_value(obs[agent_id], new_action)
+                total_qs = torch.stack([
+                    agent.agent_q_value(obs[id], new_act[id])
+                    for id, agent in adv_agent.items()],
+                    dim=1)
+                q_tot = self.Mixing_net(total_qs, global_state)
                 combined_q = q_tot
             else:
                 combined_q = q_global
-
             actor_loss = -combined_q.mean() + 1e-3 * torch.pow(logits, 2).mean()
-
             agent.update_actor(actor_loss)
+
     def update_mixing(self, qmix_loss):
         self.mixer_optimizer.zero_grad()
         for agent_id, agent in self.agents.items():
